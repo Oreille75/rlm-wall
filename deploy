@@ -1,0 +1,60 @@
+#!/usr/bin/perl
+
+use Getopt::Long;
+
+my $host = 'xxx.xxx.com';
+my $user = 'xxx';
+
+my $node_env = {
+  test => { port => 8002 },
+  production => { port => 8001 }
+};
+
+my $env = 'test';
+
+sub ssh {
+  my $command = shift;
+  system "ssh -t $user\@$host \"$command\"";
+}
+
+GetOptions("env=s" => \$env);
+
+my $command = shift || 'list';
+
+if (!exists($node_env->{$env})) {
+  die "usage: deploy --env=[test|production] command...\n";
+}
+
+if ($command eq 'list') {
+  ssh('forever list');
+}
+
+if ($command eq 'rsync') {
+  system('rsync -avh --delete'.
+         ' package.json public server log server.js log.js'.
+         ' '.$user.'@'.$host.':rlm-wall/'.$env.'/');
+}
+
+if ($command eq 'install') {
+  ssh('(cd ./rlm-wall/'.$env.' &&'.
+      ' npm install --production)');
+}
+
+if ($command eq 'start') {
+  ssh('NODE_ENV='.$env.' PORT='.$node_env->{$env}{port}.
+      ' forever --minUptime=1000ms --spinSleepTime=1000ms start'.
+      ' rlm-wall/'.$env.'/server.js')
+}
+
+if ($command eq 'stop') {
+  ssh('forever stop rlm-wall/'.$env.'/server.js');
+}
+
+if ($command eq 'restart') {
+  ssh('forever restart rlm-wall/'.$env.'/server.js');
+}
+
+if ($command eq 'log') {
+  ssh('(cd ./rlm-wall/'.$env.' &&'.
+      ' ls -1t log/verbose.* | head -1 | xargs tail -f | node log.js)');
+}
